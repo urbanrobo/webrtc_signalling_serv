@@ -12,7 +12,8 @@ var vehicles = {};
 wss.on('connection', function(connection) {
   
    console.log("User connected");
-	
+   
+
    //when server gets a message from a connected user
    connection.on('message', function(message) { 
 	
@@ -39,12 +40,7 @@ wss.on('connection', function(connection) {
 
                if(data.type == "vehicle") {
                     vehicles[data.name] = connection;
-                    for (name in users) {
-                        sendTo(users[name], {
-                            action: "vehicle_list",
-                            vehicles: Object.keys(vehicles),
-                        })
-                    }
+                    broadcastVehicleList();
 
                } else {
                     users[data.name] = connection;
@@ -120,18 +116,19 @@ wss.on('connection', function(connection) {
 				
         //     break;  
 				
-         case "leave": 
-            console.log("Disconnecting from", data.name); 
-            var conn = users[data.name]; 
-            // conn.otherName = null; 
-				
-            //notify the other user so he can disconnect his peer connection 
-            if(conn != null) { 
-               sendTo(conn, { 
-                  action: "leave" 
-               }); 
-            }  
-				
+         case "logout": 
+            console.log("Logout: ", data.name); 
+            var conn = users[data.name];
+            if (conn == null) {
+                conn = vehicles[data.name];
+                if (conn !== null) {
+                  delete vehicles[data.name];
+                  broadcastVehicleList();
+                }
+            } else {
+               delete users[data.name];
+               broadcastUserList();
+            }
             break;  
                 
         case "bye":
@@ -147,10 +144,7 @@ wss.on('connection', function(connection) {
              
             
          default: 
-            sendTo(connection, { 
-               action: "error", 
-               message: "Command not found: " + data.type 
-            }); 
+            console.log("Command not found", data.action);
 				
             break; 
       }  
@@ -160,10 +154,19 @@ wss.on('connection', function(connection) {
    //this may help if we are still in "offer","answer" or "candidate" state 
    connection.on("close", function() { 
 	
-      if(connection.name) { 
-      delete users[connection.name]; 
-		
+      if(connection.name && connection.name in users) {
+         console.log("Connection lost: ",connection.name);
+         delete users[connection.name]; 
+         broadcastUserList();
       }
+
+      if(connection.name && connection.name in vehicles) {
+         console.log("Connection lost: ",connection.name);
+         delete vehicles[connection.name]; 
+         broadcastVehicleList();
+      }
+
+
    });  
    //connection.send("Hello world"); 
 	
@@ -171,4 +174,22 @@ wss.on('connection', function(connection) {
 
 function sendTo(connection, message) { 
    connection.send(JSON.stringify(message)); 
+}
+
+function broadcastVehicleList() {
+   for (name in users) {
+      sendTo(users[name], {
+          action: "vehicle_list",
+          vehicles: Object.keys(vehicles),
+      })
+   }
+}
+
+function broadcastUserList() {
+   for (name in vehicles) {
+      sendTo(vehicles[name], {
+          action: "user_list",
+          users: Object.keys(users),
+      })
+   }
 }
