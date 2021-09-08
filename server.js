@@ -83,25 +83,19 @@ wss.on('connection', function (connection) {
 
             case "relay":
                 //for ex. UserA wants to call UserB
-                console.log("Relaying msg to: ", data.name);
+                console.log("Relaying msg to: ", data.name, data);
 
                 //if UserB exists then send him offer details
-                Object.values(users).filter(conn => conn.name === data.name).forEach(conn => {
-                        if (conn == null) {
-                            conn = vehicles[data.name];
-                        }
+                Object.values(users).concat(Object.values(vehicles)).filter(conn => conn.name === data.name).forEach(conn => {
+                        //setting that UserA connected with UserB
+                        connection.otherName = data.name;
 
-                        if (conn != null) {
-                            //setting that UserA connected with UserB
-                            connection.otherName = data.name;
-
-                            sendTo(conn, {
-                                action: "relay",
-                                type: data.type,
-                                message: data.message,
-                                name: connection.name
-                            });
-                        }
+                        sendTo(conn, {
+                            action: "relay",
+                            type: data.type,
+                            message: data.message,
+                            name: connection.name
+                        });
                     }
                 )
                 break;
