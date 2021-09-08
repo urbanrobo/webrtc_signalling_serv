@@ -6,7 +6,7 @@ const {Observable, interval, timeout, map, ignoreElements, mergeWith} = require(
 const PING_INTERVAL = 5000;
 //after PING_TIMEOUT milliseconds we consider client unresponsive and disconnect session
 const PING_TIMEOUT = 10000;
-const WEBSOCKET_PORT = 3000;
+const WEBSOCKET_PORT = 3042;
 
 const wss = new WebSocketServer({port: WEBSOCKET_PORT});
 
@@ -69,7 +69,7 @@ wss.on('connection', function (connection) {
                 break;
 
             case "connect":
-                Object.values(vehicles).filter(conn => conn.name === data.name).forEach(conn => {
+                Object.values(vehicles).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
                     if (conn != null) {
                         console.log("Sending connect to " + data.name);
 
@@ -86,7 +86,7 @@ wss.on('connection', function (connection) {
                 console.log("Relaying msg to: ", data.name, data);
 
                 //if UserB exists then send him offer details
-                Object.values(users).concat(Object.values(vehicles)).filter(conn => conn.name === data.name).forEach(conn => {
+                Object.values(users).concat(Object.values(vehicles)).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
                         //setting that UserA connected with UserB
                         connection.otherName = data.name;
 
@@ -113,10 +113,8 @@ wss.on('connection', function (connection) {
 
             case "bye":
                 console.log("Sending bye to ", data.name);
-                Object.values(vehicles).filter(conn => conn.name === data.name).forEach(conn => {
-                    sendTo(conn, {
-                        action: "bye"
-                    });
+                Object.values(vehicles).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
+                    sendTo(conn, {action: "bye"});
                 })
                 break;
             default:
