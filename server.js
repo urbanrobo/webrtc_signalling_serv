@@ -40,7 +40,8 @@ wss.on('connection', function (connection) {
         try {
             data = JSON.parse(message);
         } catch (e) {
-            console.log("Invalid JSON");
+            console.log("Invalid JSON on connection", cid);
+            onClose();
         }
 
         //switching type of the user message
@@ -49,9 +50,6 @@ wss.on('connection', function (connection) {
 
             case "login":
                 console.log("User logged", data.name);
-
-                //if anyone is logged in with this username then refuse
-
                 //save user connection on the server
                 connection.name = data.name;
 
@@ -69,21 +67,19 @@ wss.on('connection', function (connection) {
                 break;
 
             case "connect":
-                Object.values(vehicles).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
-                    if (conn != null) {
-                        console.log("Sending connect to " + data.name);
+                Object.values(vehicles).filter(car => car != null && car.name === data.name).forEach(car => {
+                    console.log("Sending connect to", data.name);
 
-                        sendTo(conn, {
-                            action: "connect",
-                            name: connection.name
-                        });
-                    }
+                    sendTo(car, {
+                        action: "connect",
+                        name: connection.name
+                    });
                 })
                 break;
 
             case "relay":
                 //for ex. UserA wants to call UserB
-                console.log("Relaying msg to: ", data.name, data);
+                console.log("Relaying msg to: ", data.name);
 
                 //if UserB exists then send him offer details
                 Object.values(users).concat(Object.values(vehicles)).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
@@ -113,8 +109,8 @@ wss.on('connection', function (connection) {
 
             case "bye":
                 console.log("Sending bye to ", data.name);
-                Object.values(vehicles).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
-                    sendTo(conn, {action: "bye"});
+                Object.values(vehicles).filter(car => car != null && car.name === data.name).forEach(car => {
+                    sendTo(car, {action: "bye"});
                 })
                 break;
             default:
@@ -163,9 +159,9 @@ function sendTo(connection, obj) {
 }
 
 function broadcastVehicleList() {
-    let vehicleIds = Object.values(vehicles).map(conn => conn.name)
-    Object.values(users).forEach(userconn => {
-        sendTo(userconn, {
+    let vehicleIds = Object.values(vehicles).map(car => car.name)
+    Object.values(users).forEach(user => {
+        sendTo(user, {
             action: "vehicle_list",
             vehicles: vehicleIds,
         })
@@ -173,9 +169,9 @@ function broadcastVehicleList() {
 }
 
 function broadcastUserList() {
-    let userIds = Object.values(users).map(conn => conn.name);
-    Object.values(vehicles).forEach(carconn => {
-        sendTo(carconn, {
+    let userIds = Object.values(users).map(user => user.name);
+    Object.values(vehicles).forEach(car => {
+        sendTo(car, {
             action: "user_list",
             users: userIds,
         })
