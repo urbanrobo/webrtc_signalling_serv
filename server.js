@@ -6,7 +6,7 @@ const {Observable, interval, timeout, map, ignoreElements, mergeWith} = require(
 const PING_INTERVAL = 5000;
 //after PING_TIMEOUT milliseconds we consider client unresponsive and disconnect session
 const PING_TIMEOUT = 10000;
-const WEBSOCKET_PORT = 3042;
+const WEBSOCKET_PORT = 3000;
 
 const wss = new WebSocketServer({port: WEBSOCKET_PORT});
 
