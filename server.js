@@ -1,195 +1,179 @@
 //require our websocket library 
-var WebSocketServer = require('ws').Server;
- 
-//creating a websocket server at port 9090 
-var wss = new WebSocketServer({port: 3000}); 
+const WebSocketServer = require('ws').Server;
+const {Observable, interval, timeout, map, ignoreElements, mergeWith} = require("rxjs");
 
-//all connected to the server users 
-var users = {};
-var vehicles = {};
+// send periodic pings to cars and drivers to make sure they are still alive
+const PING_INTERVAL = 5000;
+//after PING_TIMEOUT milliseconds we consider client unresponsive and disconnect session
+const PING_TIMEOUT = 10000;
+const WEBSOCKET_PORT = 3000;
 
-//when a user connects to our sever 
-wss.on('connection', function(connection) {
-  
-   console.log("User connected");
-   
+const wss = new WebSocketServer({port: WEBSOCKET_PORT});
 
-   //when server gets a message from a connected user
-   connection.on('message', function(message) { 
-	
-      var data; 
-      //accepting only JSON messages 
-      try {
-         data = JSON.parse(message); 
-      } catch (e) { 
-         console.log("Invalid JSON"); 
-         data = {}; 
-      } 
-		
-      //switching type of the user message 
-      switch (data.action) { 
-         //when a user tries to login 
-			
-         case "login": 
-            console.log("User logged", data.name); 
-				
-            //if anyone is logged in with this username then refuse 
+//all connected to the server users
+// key: connection id
+// value: connection
+const users = {};
+const vehicles = {};
 
-               //save user connection on the server
-               connection.name = data.name; 
+let globalConnectionId = 0;
 
-               if(data.type == "vehicle") {
-                    vehicles[data.name] = connection;
+function pongRx(connection) {
+    // no idea why fromEvent doesnt work for connection.on('pong')
+    return new Observable(subscriber => {
+        let listener = x => subscriber.next(x);
+        connection.addListener('pong', listener);
+        return () => connection.removeListener('pong', listener);
+    });
+}
+
+//when a user connects to our sever
+wss.on('connection', function (connection) {
+    let cid = globalConnectionId++;
+    console.log("User connected", cid);
+
+    //when server gets a message from a connected user
+    connection.on('message', function (message) {
+
+        let data = {};
+        //accepting only JSON messages
+        try {
+            data = JSON.parse(message);
+        } catch (e) {
+            console.log("Invalid JSON on connection", cid);
+            onClose();
+        }
+
+        //switching type of the user message
+        switch (data.action) {
+            //when a user tries to login
+
+            case "login":
+                console.log("User logged", data.name);
+                //save user connection on the server
+                connection.name = data.name;
+
+                if (data.type === "vehicle") {
+                    vehicles[cid] = connection;
                     broadcastVehicleList();
-
-               } else {
-                    users[data.name] = connection;
-                    sendTo(connection, { 
+                } else {
+                    users[cid] = connection;
+                    sendTo(connection, {
                         action: "vehicle_list",
-                        vehicles: Object.keys(vehicles),
-                     }); 
-               }
-				
-            break;
-
-         case "connect":
-            var conn = vehicles[data.name];
-            if(conn != null) { 
-                console.log("Sending connect to " + data.name);
-
-            sendTo(conn, { 
-                action: "connect", 
-                name: connection.name 
-             }); 
-            }
-             break;
-				
-         case "relay": 
-            //for ex. UserA wants to call UserB 
-            console.log("Relaying msg to: ", data.name); 
-				
-            //if UserB exists then send him offer details 
-            var conn = users[data.name];
-            if (conn == null) {
-                conn = vehicles[data.name];
-            }
-				
-            if(conn != null) { 
-               //setting that UserA connected with UserB 
-               connection.otherName = data.name; 
-					
-               sendTo(conn, { 
-                  action: "relay", 
-                  type: data.type,
-                  message: data.message, 
-                  name: connection.name 
-               }); 
-            } 
-				
-            break;  
-				
-        //  case "answer": 
-        //     console.log("Sending answer to: ", data.name); 
-        //     //for ex. UserB answers UserA 
-        //     var conn = users[data.name]; 
-				
-        //     if(conn != null) { 
-        //        connection.otherName = data.name; 
-        //        sendTo(conn, { 
-        //           type: "answer", 
-        //           answer: data.answer 
-        //        }); 
-        //     } 
-				
-        //     break;  
-				
-        //  case "candidate": 
-        //     console.log("Sending candidate to:",data.name); 
-        //     var conn = users[data.name];  
-				
-        //     if(conn != null) { 
-        //        sendTo(conn, { 
-        //           type: "candidate", 
-        //           candidate: data.candidate 
-        //        });
-        //     } 
-				
-        //     break;  
-				
-         case "logout": 
-            console.log("Logout: ", data.name); 
-            var conn = users[data.name];
-            if (conn == null) {
-                conn = vehicles[data.name];
-                if (conn !== null) {
-                  delete vehicles[data.name];
-                  broadcastVehicleList();
+                        vehicles: Object.values(vehicles).map(car => car.name),
+                    });
                 }
-            } else {
-               delete users[data.name];
-               broadcastUserList();
-            }
-            break;  
-                
-        case "bye":
-            console.log("Sending bye to ", data.name); 
-            var conn = vehicles[data.name];
-            if(conn != null) { 
-                sendTo(conn, { 
-                   action: "bye" 
-                }); 
-             }  
-                 
-             break;  
-             
-            
-         default: 
-            console.log("Command not found", data.action);
-				
-            break; 
-      }  
-   });  
-	
-   //when user exits, for example closes a browser window 
-   //this may help if we are still in "offer","answer" or "candidate" state 
-   connection.on("close", function() { 
-	
-      if(connection.name && connection.name in users) {
-         console.log("Connection lost: ",connection.name);
-         delete users[connection.name]; 
-         broadcastUserList();
-      }
 
-      if(connection.name && connection.name in vehicles) {
-         console.log("Connection lost: ",connection.name);
-         delete vehicles[connection.name]; 
-         broadcastVehicleList();
-      }
+                break;
 
+            case "connect":
+                Object.values(vehicles).filter(car => car != null && car.name === data.name).forEach(car => {
+                    console.log("Sending connect to", data.name);
 
-   });  
-   //connection.send("Hello world"); 
-	
-});  
+                    sendTo(car, {
+                        action: "connect",
+                        name: connection.name
+                    });
+                })
+                break;
 
-function sendTo(connection, message) { 
-   connection.send(JSON.stringify(message)); 
+            case "relay":
+                //for ex. UserA wants to call UserB
+                console.log("Relaying msg to: ", data.name);
+
+                //if UserB exists then send him offer details
+                Object.values(users).concat(Object.values(vehicles)).filter(conn => conn != null && conn.name === data.name).forEach(conn => {
+                        //setting that UserA connected with UserB
+                        connection.otherName = data.name;
+
+                        sendTo(conn, {
+                            action: "relay",
+                            type: data.type,
+                            message: data.message,
+                            name: connection.name
+                        });
+                    }
+                )
+                break;
+
+            case "logout":
+                console.log("Logout: ", data.name, cid);
+                if (cid in users) {
+                    delete users[cid];
+                    broadcastUserList();
+                } else if (cid in vehicles) {
+                    delete vehicles[cid];
+                    broadcastVehicleList();
+                }
+                break;
+
+            case "bye":
+                console.log("Sending bye to ", data.name);
+                Object.values(vehicles).filter(car => car != null && car.name === data.name).forEach(car => {
+                    sendTo(car, {action: "bye"});
+                })
+                break;
+            default:
+                console.log("Command not found", data.action);
+                break;
+        }
+    });
+
+    //when user exits, for example closes a browser window
+    //this may help if we are still in "offer","answer" or "candidate" state
+    let onClose = function () {
+        if (connection.pingsub) {
+            connection.pingsub.unsubscribe();
+        }
+        connection.removeAllListeners('message');
+        connection.removeAllListeners('close');
+        if (cid in users) {
+            console.log("Connection lost: ", connection.name, cid);
+            delete users[cid];
+            broadcastUserList();
+        }
+
+        if (cid in vehicles) {
+            console.log("Connection lost: ", connection.name, cid);
+            delete vehicles[cid];
+            broadcastVehicleList();
+        }
+    };
+    connection.on("close", onClose);
+
+    connection.pingsub = interval(PING_INTERVAL).pipe(
+        map(it => connection.ping(`ping${cid}-${it}`)),
+        ignoreElements(),
+        mergeWith(pongRx(connection)),
+        timeout(PING_TIMEOUT)
+    ).subscribe(next => {
+    }, error => {
+        console.log('pong timeout, client unresponsive', connection.name, cid);
+        onClose();
+    })
+
+});
+
+function sendTo(connection, obj) {
+    connection.send(JSON.stringify(obj));
 }
 
 function broadcastVehicleList() {
-   for (name in users) {
-      sendTo(users[name], {
-          action: "vehicle_list",
-          vehicles: Object.keys(vehicles),
-      })
-   }
+    let vehicleIds = Object.values(vehicles).map(car => car.name)
+    Object.values(users).forEach(user => {
+        sendTo(user, {
+            action: "vehicle_list",
+            vehicles: vehicleIds,
+        })
+    });
 }
 
 function broadcastUserList() {
-   for (name in vehicles) {
-      sendTo(vehicles[name], {
-          action: "user_list",
-          users: Object.keys(users),
-      })
-   }
+    let userIds = Object.values(users).map(user => user.name);
+    Object.values(vehicles).forEach(car => {
+        sendTo(car, {
+            action: "user_list",
+            users: userIds,
+        })
+    });
 }

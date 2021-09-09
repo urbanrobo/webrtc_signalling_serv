@@ -4,8 +4,9 @@
   "description": "Simple webrtc signalling server",
   "main": "server.js",
   "dependencies": {
-    "ws": "^7.3.1",
-    "wss": "^3.3.4"
+    "ws": "^8.2.1",
+    "wss": "^3.3.4",
+    "rxjs": "^7.3.0"
   },
   "devDependencies": {},
   "scripts": {
